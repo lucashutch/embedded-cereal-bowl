@@ -1,5 +1,0 @@
-[console_scripts]
-check-crlf = embedded_cereal_bowl.cli:main_check_crlf
-format-code = embedded_cereal_bowl.cli:main_formatter
-monitor = embedded_cereal_bowl.cli:main_monitor
-timestamp = embedded_cereal_bowl.cli:main_timestamp

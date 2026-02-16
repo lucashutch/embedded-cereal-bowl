@@ -12,3 +12,4 @@ venv/
 coverage.xml
 htmlcov/
 
+src/*.egg-info/
