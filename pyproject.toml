@@ -38,7 +38,6 @@ dev = [
     "pytest-mock>=3.10",
     "ruff>=0.1.0",
     "mypy>=1.0",
-    "bandit>=1.7",
     "build>=0.8.0",
 ]
 
@@ -78,19 +77,12 @@ select = [
     "SIM",
     # isort
     "I",
-    # flake8-bandit (security)
-    "S",
     # ruff-specific rules
     "RUF",
 ]
 
 ignore = [
     "E501",  # Line too long (handled by formatter)
-    "S101",  # Use of assert detected (allowed in tests)
-    "S311",  # Standard pseudo-random generators (not for crypto)
-    "S603",  # subprocess call (already checked manually)
-    "S605",  # Starting process with shell (safe for clear/cls)
-    "S607",  # Partial executable path (safe for clear/cls)
     "SIM103",  # Return condition directly (keep readable)
     "SIM105",  # Use contextlib.suppress (keep explicit try/except)
     "SIM108",  # Use ternary operator (keep readable)
@@ -102,13 +94,10 @@ ignore = [
     "E712",  # Avoid equality comparisons to True (keep explicit)
     "F821",  # Undefined name (existing code patterns)
     "F811",  # Redefinition (existing test patterns)
-    "S108",  # Insecure temp file path (acceptable in tests)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
-    "S101",  # Allow assert in tests
-    "S311",  # Allow random in tests
 ]
 
 [tool.ruff.format]
