@@ -20,6 +20,7 @@ jobs:
           ruff format --check src tests
 
   test:
+    needs: lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
