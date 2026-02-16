@@ -93,6 +93,20 @@ def get_serial_prefix() -> str:
     return "/dev/tty"
 
 
+def get_serial_port_name(port_arg: str) -> str:
+    """Construct the full serial port name based on user input and OS."""
+    if os.name == "nt":
+        return port_arg
+
+    if port_arg.startswith("/"):
+        return port_arg
+
+    if port_arg.startswith("tty"):
+        return f"/dev/{port_arg}"
+
+    return f"{get_serial_prefix()}{port_arg}"
+
+
 def clear_terminal() -> None:
     # clear screen
     if os.name == "nt":
@@ -317,7 +331,8 @@ def main() -> None:
         clear_terminal()
 
     print(colour_str(f"{args}").dim())
-    serial_port_name = f"{get_serial_prefix()}{args.port}"
+
+    serial_port_name = get_serial_port_name(args.port)
 
     highlight_words = []
     if args.highlight:

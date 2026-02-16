@@ -15,6 +15,7 @@ from src.embedded_cereal_bowl.monitor.monitor import (
     add_time_to_line,
     clear_terminal,
     create_replacement_lambda,
+    get_serial_port_name,
     get_serial_prefix,
     parse_arguments,
     run_serial_printing_with_logs,
@@ -99,6 +100,35 @@ class TestGetSerialPrefix:
         with patch("os.name", "posix"):
             prefix = get_serial_prefix()
             assert prefix == "/dev/tty"
+
+
+class TestGetSerialPortName:
+    """Test cases for get_serial_port_name function."""
+
+    def test_get_serial_port_name_nt(self):
+        """Test port name construction on Windows."""
+        with patch("os.name", "nt"):
+            assert get_serial_port_name("COM3") == "COM3"
+            assert get_serial_port_name("COM10") == "COM10"
+
+    def test_get_serial_port_name_unix_short(self):
+        """Test port name construction on Unix with short name."""
+        with patch("os.name", "posix"):
+            assert get_serial_port_name("ACM0") == "/dev/ttyACM0"
+            assert get_serial_port_name("USB0") == "/dev/ttyUSB0"
+
+    def test_get_serial_port_name_unix_tty(self):
+        """Test port name construction on Unix with tty prefix."""
+        with patch("os.name", "posix"):
+            assert get_serial_port_name("ttyACM0") == "/dev/ttyACM0"
+            assert get_serial_port_name("ttyUSB0") == "/dev/ttyUSB0"
+
+    def test_get_serial_port_name_unix_full(self):
+        """Test port name construction on Unix with full path."""
+        with patch("os.name", "posix"):
+            assert get_serial_port_name("/dev/ttyACM0") == "/dev/ttyACM0"
+            assert get_serial_port_name("/dev/rfcomm0") == "/dev/rfcomm0"
+            assert get_serial_port_name("/dev/pts/1") == "/dev/pts/1"
 
 
 class TestClearTerminal:
