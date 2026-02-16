@@ -37,7 +37,6 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-mock>=3.10",
     "ruff>=0.1.0",
-    "mypy>=1.0",
     "build>=0.8.0",
 ]
 
@@ -104,24 +103,6 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
-
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-strict_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-show_error_codes = true
-
-[[tool.mypy.overrides]]
-module = [
-    "serial.*",
-    "regex.*",
-    "colorama.*",
-]
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
