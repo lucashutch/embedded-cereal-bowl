@@ -5,11 +5,8 @@ Lightweight Python utilities for embedded development: serial monitoring, code f
 ## 🚀 Quick Start
 
 ```bash
-pip install embedded-cereal-bowl
+uv tool install embedded-cereal-bowl
 monitor --send          # Serial monitor with interactive sending
-timestamp "2025-01-21"  # Time conversion
-check-crlf                # Line ending checks  
-format-code                # Format source files
 ```
 
 ## 📦 Tools
@@ -24,7 +21,7 @@ format-code                # Format source files
 ## 🔧 Installation
 
 ```bash
-pip install embedded-cereal-bowl
+uv tool install embedded-cereal-bowl
 ```
 
 ## 📖 Details & Examples

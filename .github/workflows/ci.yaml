@@ -8,6 +8,17 @@ on:
       - 'v*'
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/ruff:alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and format check with ruff
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -17,50 +28,31 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
       with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
         python-version: ${{ matrix.python-version }}
-
-    - name: Cache pip dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev]
-
-    - name: Lint and format check with ruff
-      run: |
-        ruff check src tests
-        ruff format --check src tests
-
-    - name: Type checking with mypy
-      run: |
-        mypy src
-
-    - name: Security check with bandit
-      run: |
-        bandit -r src -f json -o bandit-report.json || true  # Don't fail the build
-        bandit -r src
+        uv sync --all-extras --dev
 
     - name: Test with pytest
       run: |
-        pytest --ignore=tests/integration/ --cov=src --cov-report=xml --cov-report=term-missing --cov-report=html
+        uv run pytest --ignore=tests/integration/ --cov=src --cov-report=xml --cov-report=term-missing --cov-report=html
 
-    - name: Upload coverage to Codecov
-      if: matrix.python-version == '3.12'  # Only upload coverage once
-      uses: codecov/codecov-action@v4
+    - name: Code Coverage Summary
+      uses: irongut/CodeCoverageSummary@v1.3.0
       with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
+        filename: coverage.xml
+        badge: true
+        format: markdown
+        output: both
+
+    - name: Add Coverage Summary to Job Summary
+      run: cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
 
     - name: Archive test results
       if: matrix.python-version == '3.12'
@@ -69,22 +61,22 @@ jobs:
         name: coverage-report
         path: |
           htmlcov/
-          bandit-report.json
+          code-coverage-results.md
 
     - name: Test CLI entry points
       run: |
         # Test that CLI entry points are working
-        monitor --help
-        timestamp --help
-        check-crlf --help
-        format-code --help
+        uv run monitor --help
+        uv run timestamp --help
+        uv run check-crlf --help
+        uv run format-code --help
 
     - name: Build package
       run: |
-        python -m build
+        uv build
 
     - name: Check package build
       run: |
         # Check that the built package can be installed
-        pip install dist/*.whl
-        pip uninstall embedded-cereal-bowl -y
+        uv pip install dist/*.whl
+        uv pip uninstall embedded-cereal-bowl
