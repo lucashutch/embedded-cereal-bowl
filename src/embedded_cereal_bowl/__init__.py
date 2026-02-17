@@ -6,7 +6,7 @@ This package provides tools for serial monitoring, code formatting, time convers
 and line ending checking, designed to simplify common embedded development tasks.
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("embedded-cereal-bowl")

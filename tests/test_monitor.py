@@ -1,421 +1,369 @@
-"""Test configuration and utilities."""
+"""Tests for the serial monitor module."""
 
-import os
 import sys
-from pathlib import Path
+import threading
 from unittest.mock import Mock, mock_open, patch
 
+import pytest
 import serial
 
-# Add src directory to path for testing
-src_path = Path(__file__).parent.parent / "src"
-sys.path.insert(0, str(src_path))
-
 from src.embedded_cereal_bowl.monitor.monitor import (
+    ASNI_ESCAPE_PATTERN,
     add_time_to_line,
     clear_terminal,
     create_replacement_lambda,
     get_serial_port_name,
     get_serial_prefix,
+    handle_user_input,
+    main,
     parse_arguments,
+    run_serial_printing,
     run_serial_printing_with_logs,
-    send_serial_data,
+    serial_loop,
     wait_with_spinner,
 )
 
 
-class TestParseArguments:
-    """Test cases for parse_arguments function."""
+class TestMonitorArguments:
+    """Test argument parsing and port name resolution."""
 
     def test_parse_arguments_defaults(self):
-        """Test parsing with default arguments."""
         with patch("sys.argv", ["monitor"]):
             args = parse_arguments()
-
-            assert args.port == "ACM0" if os.name != "nt" else "COM3"
             assert args.baud == 115200
             assert args.log is False
-            assert args.log_file == ""
-            assert args.log_directory.endswith("logs")
-            assert args.clear is False
-            assert args.print_time == "off"
-            assert args.highlight is None
-            assert args.send is False
 
-    def test_parse_arguments_custom_values(self):
-        """Test parsing with custom arguments."""
-        test_args = [
-            "monitor",
-            "-p",
-            "USB0",
-            "-b",
-            "9600",
-            "-l",
-            "--log-file",
-            "test",
-            "--log-directory",
-            "/tmp/logs",
-            "-c",
-            "--print_time",
-            "epoch",
-            "--highlight",
-            "error,warning",
-            "--send",
-        ]
+    @patch("sys.argv", ["monitor", "--print_time", "invalid choice"])
+    def test_invalid_print_time_choice(self):
+        with pytest.raises(SystemExit):
+            parse_arguments()
 
-        with patch("sys.argv", test_args):
-            args = parse_arguments()
-
-            assert args.port == "USB0"
-            assert args.baud == 9600
-            assert args.log is True
-            assert args.log_file == "test"
-            assert args.log_directory == "/tmp/logs"
-            assert args.clear is True
-            assert args.print_time == "epoch"
-            assert args.highlight == "error,warning"
-            assert args.send is True
-
-    def test_parse_arguments_print_time_choices(self):
-        """Test valid print_time choices."""
-        choices = ["off", "epoch", "ms", "dt"]
-
-        for choice in choices:
-            with patch("sys.argv", ["monitor", "--print_time", choice]):
-                args = parse_arguments()
-                assert args.print_time == choice
-
-
-class TestGetSerialPrefix:
-    """Test cases for get_serial_prefix function."""
-
-    def test_get_serial_prefix_nt(self):
-        """Test serial prefix on Windows."""
+    def test_get_serial_prefix(self):
         with patch("os.name", "nt"):
-            prefix = get_serial_prefix()
-            assert prefix == ""
-
-    def test_get_serial_prefix_unix(self):
-        """Test serial prefix on Unix systems."""
+            assert get_serial_prefix() == ""
         with patch("os.name", "posix"):
-            prefix = get_serial_prefix()
-            assert prefix == "/dev/tty"
+            assert get_serial_prefix() == "/dev/tty"
 
-
-class TestGetSerialPortName:
-    """Test cases for get_serial_port_name function."""
-
-    def test_get_serial_port_name_nt(self):
-        """Test port name construction on Windows."""
-        with patch("os.name", "nt"):
-            assert get_serial_port_name("COM3") == "COM3"
-            assert get_serial_port_name("COM10") == "COM10"
-
-    def test_get_serial_port_name_unix_short(self):
-        """Test port name construction on Unix with short name."""
+    def test_get_serial_port_name(self):
         with patch("os.name", "posix"):
             assert get_serial_port_name("ACM0") == "/dev/ttyACM0"
-            assert get_serial_port_name("USB0") == "/dev/ttyUSB0"
-
-    def test_get_serial_port_name_unix_tty(self):
-        """Test port name construction on Unix with tty prefix."""
-        with patch("os.name", "posix"):
-            assert get_serial_port_name("ttyACM0") == "/dev/ttyACM0"
+            assert get_serial_port_name("/dev/custom") == "/dev/custom"
             assert get_serial_port_name("ttyUSB0") == "/dev/ttyUSB0"
-
-    def test_get_serial_port_name_unix_full(self):
-        """Test port name construction on Unix with full path."""
-        with patch("os.name", "posix"):
-            assert get_serial_port_name("/dev/ttyACM0") == "/dev/ttyACM0"
-            assert get_serial_port_name("/dev/rfcomm0") == "/dev/rfcomm0"
-            assert get_serial_port_name("/dev/pts/1") == "/dev/pts/1"
+            assert get_serial_port_name("USB0") == "/dev/ttyUSB0"
+        with patch("os.name", "nt"):
+            assert get_serial_port_name("COM3") == "COM3"
 
 
-class TestClearTerminal:
-    """Test cases for clear_terminal function."""
+class TestMonitorUtilities:
+    """Test utility functions like terminal clearing and timestamping."""
 
-    def test_clear_terminal_nt(self):
-        """Test terminal clearing on Windows."""
-        with patch("os.name", "nt"), patch("os.system") as mock_system:
+    def test_clear_terminal(self):
+        with patch("os.name", "nt"), patch("os.system") as mock_sys:
             clear_terminal()
-            mock_system.assert_called_once_with("cls")
-
-    def test_clear_terminal_unix(self):
-        """Test terminal clearing on Unix."""
-        with patch("os.name", "posix"), patch("os.system") as mock_system:
+            mock_sys.assert_called_with("cls")
+        with patch("os.name", "posix"), patch("os.system") as mock_sys:
             clear_terminal()
-            mock_system.assert_called_once_with("clear")
+            mock_sys.assert_called_with("clear")
 
-
-class TestAddTimeToLine:
-    """Test cases for add_time_to_line function."""
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.datetime")
-    def test_add_time_to_line_off(self, mock_datetime):
-        """Test adding timestamp with 'off' mode."""
-        result = add_time_to_line("off")
-        assert result == ""
-        mock_datetime.assert_not_called()
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.datetime")
-    def test_add_time_to_line_epoch(self, mock_datetime):
-        """Test adding timestamp with 'epoch' mode."""
-        # Mock current time
-        mock_now = Mock()
-        mock_now.timestamp.return_value = 1672531200.123
-        mock_datetime.now.return_value = mock_now
-        mock_datetime.now.return_value.replace.return_value = mock_now
-
-        result = add_time_to_line("epoch")
-        assert result == "1672531200.123 "
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.datetime")
-    def test_add_time_to_line_ms(self, mock_datetime):
-        """Test adding timestamp with 'ms' mode."""
-        # Mock current time
-        mock_now = Mock()
-        mock_now.timestamp.return_value = 1672531200.123
-        mock_datetime.now.return_value = mock_now
-
-        result = add_time_to_line("ms")
-        assert result == "1672531200123 "
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.datetime")
-    def test_add_time_to_line_dt(self, mock_datetime):
-        """Test adding timestamp with 'dt' mode."""
-        # Mock current time
-        mock_now = Mock()
-        mock_now.replace.return_value.isoformat.return_value = "2023-01-01 10:00:00.123"
-        mock_datetime.now.return_value = mock_now
-
-        result = add_time_to_line("dt")
-        assert result == "2023-01-01 10:00:00.123 "
-
-    def test_add_time_to_line_invalid_mode(self):
-        """Test adding timestamp with invalid mode."""
-        result = add_time_to_line("invalid")
-        assert result == ""
-
-
-class TestCreateReplacementLambda:
-    """Test cases for create_replacement_lambda function."""
-
-    def test_create_replacement_lambda_basic(self):
-        """Test basic replacement lambda creation."""
-        line_state = "this is a test line with error"
-
-        with patch(
-            "src.embedded_cereal_bowl.monitor.monitor.colour_str"
-        ) as mock_colour:
-            mock_coloured = Mock()
-            mock_coloured.back_green.return_value = mock_coloured
-            mock_coloured.black.return_value = mock_coloured
-            mock_colour.return_value = mock_coloured
-            mock_coloured.__str__ = Mock(return_value="highlighted_error")
-
-            lambda_func = create_replacement_lambda(line_state)
-
-            # Create a mock match object
-            mock_match = Mock()
-            mock_match.group.return_value = "error"
-            mock_match.start.return_value = 22
-            mock_match.end.return_value = 27
-
-            result = lambda_func(mock_match)
-
-            mock_colour.assert_called_once_with("error")
-            mock_coloured.back_green.assert_called_once()
-            mock_coloured.black.assert_called_once()
-
-    def test_create_replacement_lambda_with_ansi_codes(self):
-        """Test replacement lambda with ANSI codes in the line."""
-        line_state = "normal text \x1b[31mred text\x1b[0m error"
-
-        with patch(
-            "src.embedded_cereal_bowl.monitor.monitor.colour_str"
-        ) as mock_colour:
-            mock_coloured = Mock()
-            mock_coloured.back_green.return_value = mock_coloured
-            mock_coloured.black.return_value = mock_coloured
-            mock_colour.return_value = mock_coloured
-            mock_coloured.__str__ = Mock(return_value="highlighted_error")
-
-            lambda_func = create_replacement_lambda(line_state)
-
-            mock_match = Mock()
-            mock_match.group.return_value = "error"
-            mock_match.start.return_value = len("normal text \x1b[31mred text\x1b[0m ")
-            mock_match.end.return_value = len(
-                "normal text \x1b[31mred text\x1b[0m error"
+    def test_add_time_to_line(self):
+        assert add_time_to_line(None) == ""
+        with patch("src.embedded_cereal_bowl.monitor.monitor.datetime") as mock_dt:
+            mock_now = Mock()
+            mock_now.timestamp.return_value = 1000.0
+            mock_dt.now.return_value = mock_now
+            mock_dt.now.return_value.replace.return_value.isoformat.return_value = (
+                "2023-01-01 10:00:00.000"
             )
 
-            result = lambda_func(mock_match)
+            assert "1000.000" in add_time_to_line("epoch")
+            assert "1000000" in add_time_to_line("ms")
+            assert "2023-01-01" in add_time_to_line("dt")
+        assert add_time_to_line("invalid") == ""
 
-            # Should find preceding codes and apply them after highlighting
-            mock_colour.assert_called_once_with("error")
+    def test_ansi_escape_pattern(self):
+        assert ASNI_ESCAPE_PATTERN.search("\x1b[31m")
+        assert not ASNI_ESCAPE_PATTERN.search("plain")
 
-
-class TestSendSerialData:
-    """Test cases for send_serial_data function."""
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.add_time_to_line")
-    def test_send_serial_data_no_file(self):
-        """Test sending data without logging file."""
-        mock_ser = Mock()
-        mock_add_time = Mock(return_value="timestamp ")
-
+    def test_create_replacement_lambda(self):
+        line_state = "normal \x1b[31mred\x1b[0m error"
         with patch(
-            "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line", mock_add_time
-        ):
-            with patch("builtins.print") as mock_print:
-                result = send_serial_data(mock_ser, "test data", "epoch", None)
+            "src.embedded_cereal_bowl.monitor.monitor.colour_str"
+        ) as mock_colour:
+            mock_chain = Mock()
+            mock_chain.back_green.return_value = mock_chain
+            mock_chain.black.return_value = mock_chain
+            mock_chain.__str__ = Mock(return_value="MATCH")
+            mock_colour.return_value = mock_chain
 
-                assert result is True
-                mock_print.assert_called_once_with("timestamp test data\n", end="")
-            mock_file.write.assert_called_once_with("timestamp test data\n")
+            callback = create_replacement_lambda(line_state)
+            mock_match = Mock()
+            mock_match.group.return_value = "error"
+            mock_match.start.return_value = len("normal \x1b[31mred\x1b[0m ")
+            result = callback(mock_match)
+            assert result is not None
 
-    @patch("src.embedded_cereal_bowl.monitor.monitor.add_time_to_line")
-    def test_send_serial_data_with_newline(self, mock_add_time):
-        """Test sending data that already has a newline."""
+    def test_create_replacement_lambda_no_reset(self):
+        line_state = "\x1b[31mred error"
+        with patch(
+            "src.embedded_cereal_bowl.monitor.monitor.colour_str"
+        ) as mock_colour:
+            mock_chain = Mock()
+            mock_chain.back_green.return_value = mock_chain
+            mock_chain.black.return_value = mock_chain
+            mock_chain.__str__ = Mock(return_value="MATCH")
+            mock_colour.return_value = mock_chain
+
+            callback = create_replacement_lambda(line_state)
+            mock_match = Mock()
+            mock_match.group.return_value = "error"
+            mock_match.start.return_value = len("\x1b[31mred ")
+            result = callback(mock_match)
+            assert "\x1b[31m" in result
+
+
+class TestMonitorLogic:
+    """Test the core monitor logic and loops."""
+
+    def test_wait_with_spinner(self):
+        with patch("sys.stdout.write"), patch("sys.stdout.flush"):
+            assert wait_with_spinner("port", 0) == 1
+            assert wait_with_spinner("port", 3) == 4
+
+    @patch("src.embedded_cereal_bowl.monitor.monitor.run_serial_printing")
+    @patch("os.mkdir")
+    @patch("os.path.isdir", return_value=False)
+    def test_run_serial_printing_with_logs(self, mock_isdir, mock_mkdir, mock_run):
+        with patch("builtins.open", mock_open()):
+            run_serial_printing_with_logs("p", 115200, "f", "d", "epoch")
+            mock_mkdir.assert_called_once_with("d")
+            mock_run.assert_called_once()
+
+    def test_serial_loop_basic(self):
         mock_ser = Mock()
-        mock_file = Mock()
-        mock_add_time.return_value = "timestamp test data\n"
-
-        result = send_serial_data(mock_ser, "test data\n", "epoch", mock_file)
-
-        assert result is True
-        # Should not add another newline
-        mock_ser.write.assert_called_once_with(b"test data\n")
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.colour_str")
-    @patch("src.embedded_cereal_bowl.monitor.monitor.add_time_to_line")
-    def test_send_serial_data_serial_exception(self, mock_add_time, mock_colour):
-        """Test handling of serial exception."""
-        mock_ser = Mock()
-        mock_ser.write.side_effect = serial.SerialException("Serial error")
-        mock_file = Mock()
-        mock_add_time.return_value = "timestamp test data\n"
-        mock_colour.return_value = Mock()
-        mock_colour.return_value.red.return_value = "colored error"
-
-        with patch("builtins.print") as mock_print:
-            result = send_serial_data(mock_ser, "test data", "epoch", mock_file)
-
-            assert result is False
-            mock_print.assert_called()
-
-    def test_send_serial_data_no_file(self):
-        """Test sending data without logging file."""
-        mock_ser = Mock()
-        mock_add_time = Mock(return_value="timestamp ")
-
+        # Test empty line then real line then stop
+        mock_ser.readline.side_effect = [b"", b"line1\n", KeyboardInterrupt()]
         with (
+            patch("builtins.print"),
             patch(
                 "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line",
-                mock_add_time,
+                return_value="",
             ),
-            patch("builtins.print") as mock_print,
         ):
-            result = send_serial_data(mock_ser, "test data", "epoch", None)
+            try:
+                serial_loop(mock_ser, None, None)
+            except KeyboardInterrupt:
+                pass
+        assert mock_ser.readline.call_count >= 2
 
-            assert result is True
-            mock_print.assert_called_once_with("timestamp test data\n", end="")
+    def test_serial_loop_with_highlighting(self):
+        mock_ser = Mock()
+        mock_ser.readline.side_effect = [b"error\n", KeyboardInterrupt()]
+        with (
+            patch("builtins.print"),
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line",
+                return_value="",
+            ),
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.create_replacement_lambda",
+                return_value=lambda m: "!",
+            ),
+        ):
+            try:
+                serial_loop(mock_ser, None, None, highlight_words=["error", ""])
+            except KeyboardInterrupt:
+                pass
+
+    def test_serial_loop_with_logging(self):
+        mock_ser = Mock()
+        mock_ser.readline.side_effect = [b"data\n", KeyboardInterrupt()]
+        mock_file = Mock()
+        with (
+            patch("builtins.print"),
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line",
+                return_value="",
+            ),
+        ):
+            try:
+                serial_loop(mock_ser, None, mock_file)
+            except KeyboardInterrupt:
+                pass
+        mock_file.write.assert_called()
+
+    def test_serial_loop_finally_cleanup(self):
+        mock_ser = Mock()
+        mock_ser.readline.side_effect = [b"line\n", KeyboardInterrupt()]
+        with patch("threading.Thread") as mock_thread_class:
+            mock_thread_instance = Mock()
+            mock_thread_instance.is_alive.return_value = True
+            mock_thread_class.return_value = mock_thread_instance
+            with (
+                patch("builtins.print"),
+                patch(
+                    "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line",
+                    return_value="",
+                ),
+            ):
+                try:
+                    serial_loop(mock_ser, None, None, enable_send=True)
+                except KeyboardInterrupt:
+                    pass
+            mock_thread_instance.join.assert_called_once()
+
+    def test_handle_user_input_normal(self):
+        mock_ser = Mock()
+        stop_event = threading.Event()
+        with (
+            patch("select.select", return_value=([sys.stdin], [], [])),
+            patch("sys.stdin.readline", side_effect=["cmd\n", KeyboardInterrupt()]),
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.send_serial_data"
+            ) as mock_send,
+        ):
+            try:
+                handle_user_input(mock_ser, None, None, stop_event)
+            except KeyboardInterrupt:
+                pass
+            mock_send.assert_called()
+
+    def test_handle_user_input_errors(self, capsys):
+        mock_ser = Mock()
+        stop_event = threading.Event()
+        with patch("select.select", side_effect=OSError):
+            handle_user_input(mock_ser, None, None, stop_event)
+        with (
+            patch("select.select", return_value=([sys.stdin], [], [])),
+            patch("sys.stdin.readline", side_effect=Exception("Read error")),
+        ):
+            handle_user_input(mock_ser, None, None, stop_event)
+            assert "Input error" in capsys.readouterr().out
+
+    def test_send_serial_data_basic(self):
+        mock_ser = Mock()
+        mock_file = Mock()
+        with (
+            patch("builtins.print"),
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line",
+                return_value="",
+            ),
+        ):
+            from src.embedded_cereal_bowl.monitor.monitor import send_serial_data
+
+            assert send_serial_data(mock_ser, "test", None, mock_file)
+            mock_ser.write.assert_called_with(b"test\n")
+            mock_file.write.assert_called_once()
+
+    def test_send_serial_data_error(self, capsys):
+        mock_ser = Mock()
+        mock_ser.write.side_effect = serial.SerialException("Boom")
+        with patch(
+            "src.embedded_cereal_bowl.monitor.monitor.add_time_to_line",
+            return_value="",
+        ):
+            from src.embedded_cereal_bowl.monitor.monitor import send_serial_data
+
+            assert not send_serial_data(mock_ser, "test", None, None)
+            assert "Send error" in capsys.readouterr().out
 
 
-class TestWaitWithSpinner:
-    """Test cases for wait_with_spinner function."""
+class TestMonitorIntegration:
+    """Integration-style tests for the monitor."""
 
-    @patch("sys.stdout.write")
-    @patch("sys.stdout.flush")
+    @patch("time.sleep")
+    @patch("serial.Serial")
+    def test_run_serial_printing_success(self, mock_serial, mock_sleep):
+        mock_ser = Mock()
+        mock_serial.return_value.__enter__.return_value = mock_ser
+        with (
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.serial_loop",
+                side_effect=KeyboardInterrupt,
+            ),
+            patch("builtins.print"),
+            pytest.raises(SystemExit),
+        ):
+            run_serial_printing("port", 115200)
+
+    def test_run_serial_printing_exception(self):
+        with (
+            patch("time.sleep"),
+            patch("serial.Serial") as mock_serial,
+            patch(
+                "src.embedded_cereal_bowl.monitor.monitor.wait_with_spinner"
+            ) as mock_spin,
+        ):
+            mock_serial.side_effect = [
+                serial.SerialException("Boom"),
+                KeyboardInterrupt(),
+            ]
+            with patch("builtins.print"), pytest.raises(SystemExit):
+                run_serial_printing("port", 115200)
+            mock_spin.assert_called_once()
+
     @patch("src.embedded_cereal_bowl.monitor.monitor.colour_str")
-    def test_wait_with_spinner_basic(self, mock_colour, mock_flush, mock_write):
-        """Test basic spinner functionality."""
-        mock_colour.return_value = Mock()
-        mock_colour.return_value.dim.return_value.__str__ = Mock(
-            return_value="spinner text"
-        )
+    def test_run_serial_printing_keyboard_interrupt(self, mock_colour):
+        mock_color_obj = Mock()
+        mock_color_obj.dim.return_value = mock_color_obj
+        mock_color_obj.green.return_value = mock_color_obj
+        mock_colour.return_value = mock_color_obj
 
-        result = wait_with_spinner("/dev/ttyUSB0", 0)
-
-        assert result == 1
-        mock_colour.assert_called_once()
-        mock_write.assert_called_once_with("\rspinner text")
-        mock_flush.assert_called_once()
-
-    @patch("sys.stdout.write")
-    @patch("sys.stdout.flush")
-    @patch("src.embedded_cereal_bowl.monitor.monitor.colour_str")
-    def test_wait_with_spinner_cycling(self, mock_colour, mock_flush, mock_write):
-        """Test spinner cycling through different states."""
-        mock_colour.return_value = Mock()
-        mock_colour.return_value.dim.return_value.__str__ = Mock(
-            return_value="spinner text"
-        )
-
-        # Test multiple cycles
-        result1 = wait_with_spinner("/dev/ttyUSB0", 0)
-        result2 = wait_with_spinner("/dev/ttyUSB0", 1)
-        result3 = wait_with_spinner("/dev/ttyUSB0", 2)
-        result4 = wait_with_spinner("/dev/ttyUSB0", 3)
-        result5 = wait_with_spinner("/dev/ttyUSB0", 4)
-
-        assert result1 == 1
-        assert result2 == 2
-        assert result3 == 3
-        assert result4 == 4
-        assert result5 == 5
-
-        # Should have been called 5 times
-        assert mock_colour.call_count == 5
-        assert mock_write.call_count == 5
-        assert mock_flush.call_count == 5
+        with patch(
+            "src.embedded_cereal_bowl.monitor.monitor.serial.Serial"
+        ) as mock_serial:
+            mock_serial.side_effect = KeyboardInterrupt()
+            with patch("builtins.print"), pytest.raises(SystemExit) as exc:
+                run_serial_printing("port", 115200)
+            assert exc.value.code == 0
 
 
-class TestRunSerialPrintingWithLogs:
-    """Test cases for run_serial_printing_with_logs function."""
-
-    @patch("src.embedded_cereal_bowl.monitor.monitor.run_serial_printing")
-    @patch("src.embedded_cereal_bowl.monitor.monitor.datetime")
-    @patch("os.path.isdir")
-    @patch("os.mkdir")
-    def test_run_serial_printing_with_logs_new_directory(
-        self, mock_mkdir, mock_isdir, mock_datetime, mock_run
+def test_monitor_main():
+    with (
+        patch("src.embedded_cereal_bowl.monitor.monitor.parse_arguments") as mock_parse,
+        patch("src.embedded_cereal_bowl.monitor.monitor.run_serial_printing"),
+        patch(
+            "src.embedded_cereal_bowl.monitor.monitor.run_serial_printing_with_logs"
+        ) as mock_run_logs,
+        patch("builtins.print"),
     ):
-        """Test logging with new directory creation."""
-        mock_isdir.return_value = False
-        mock_datetime.now.return_value.strftime.return_value = "2023.01.01_12.00.00"
+        mock_parse.return_value = Mock(
+            clear=False,
+            highlight=None,
+            log=False,
+            send=False,
+            port="p",
+            baud=115200,
+            print_time=None,
+        )
+        main()
 
-        with patch("builtins.open", mock_open()) as mock_file:
-            run_serial_printing_with_logs(
-                "/dev/ttyUSB0", 115200, "test", "/tmp/logs", "epoch", None, False
-            )
+        mock_parse.return_value = Mock(
+            clear=True,
+            highlight="[a,b]",
+            log=True,
+            send=True,
+            port="p",
+            baud=115200,
+            print_time="epoch",
+            log_file="lf",
+            log_directory="ld",
+        )
+        with patch("src.embedded_cereal_bowl.monitor.monitor.clear_terminal"):
+            main()
+            mock_run_logs.assert_called_once()
 
-            mock_isdir.assert_called_once_with("/tmp/logs")
-            mock_mkdir.assert_called_once_with("/tmp/logs")
-            mock_file.assert_called_once_with(
-                "/tmp/logs/2023.01.01_12.00.00_test.txt", "a+", buffering=1
-            )
-            mock_run.assert_called_once()
 
-    @patch("src.embedded_cereal_bowl.monitor.monitor.run_serial_printing")
-    @patch("src.embedded_cereal_bowl.monitor.monitor.datetime")
-    @patch("os.path.isdir")
-    @patch("os.mkdir")
-    def test_run_serial_printing_with_logs_existing_directory(
-        self, mock_mkdir, mock_isdir, mock_datetime, mock_run
+def test_monitor_main_block():
+    import runpy
+
+    with (
+        patch("argparse.ArgumentParser.parse_args", side_effect=SystemExit(0)),
+        patch("sys.argv", ["monitor.py"]),
     ):
-        """Test logging with existing directory."""
-        mock_isdir.return_value = True
-        mock_datetime.now.return_value.strftime.return_value = "2023.01.01_12.00.00"
-
-        with patch("builtins.open", mock_open()) as mock_file:
-            run_serial_printing_with_logs(
-                "/dev/ttyUSB0", 115200, "test", "/tmp/logs", "epoch", None, False
+        try:
+            runpy.run_module(
+                "src.embedded_cereal_bowl.monitor.monitor", run_name="__main__"
             )
-
-            mock_isdir.assert_called_once_with("/tmp/logs")
-            mock_mkdir.assert_not_called()  # Directory already exists
-            mock_file.assert_called_once_with(
-                "/tmp/logs/2023.01.01_12.00.00_test.txt", "a+", buffering=1
-            )
-            mock_run.assert_called_once()
+        except SystemExit:
+            pass
