@@ -314,18 +314,21 @@ def run_serial_printing(
     enable_send: bool = False,
 ) -> None:
     count = 0
-    while True:
-        try:
-            time.sleep(0.2)
-            with serial.Serial(serial_port_name, baud, timeout=0.05) as ser:
-                count = 0
-                print("\n" + f" ✅ Connected to {serial_port_name} ".center(50, "-"))
-                serial_loop(ser, print_time, file, highlight_words, enable_send)
-        except serial.SerialException:
-            count = wait_with_spinner(serial_port_name, count)
-        except KeyboardInterrupt:
-            print(colour_str(f"\nClosed {serial_port_name}.").dim().green())
-            sys.exit(0)
+    try:
+        while True:
+            try:
+                time.sleep(0.2)
+                with serial.Serial(serial_port_name, baud, timeout=0.05) as ser:
+                    count = 0
+                    print(
+                        "\n" + f" ✅ Connected to {serial_port_name} ".center(50, "-")
+                    )
+                    serial_loop(ser, print_time, file, highlight_words, enable_send)
+            except serial.SerialException:
+                count = wait_with_spinner(serial_port_name, count)
+    except KeyboardInterrupt:
+        print(colour_str(f"\nClosed {serial_port_name}.").dim().green())
+        sys.exit(0)
 
 
 def main() -> None:
