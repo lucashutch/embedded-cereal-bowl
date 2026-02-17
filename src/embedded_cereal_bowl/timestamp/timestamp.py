@@ -3,6 +3,8 @@ import argparse
 import sys
 from datetime import UTC, datetime
 
+from .. import __version__
+
 
 def parse_and_convert_time(time_input: str) -> tuple[str, str, float]:
     """
@@ -61,6 +63,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Convert a Unix timestamp (seconds/milliseconds) or an ISO 8601 "
         "time string to UTC and local time in ISO 8601 format."
+    )
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"%(prog)s {__version__}"
     )
     # The argument type is str to handle both numeric and string date formats
     parser.add_argument(

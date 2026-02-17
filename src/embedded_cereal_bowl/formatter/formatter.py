@@ -10,6 +10,7 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
+from .. import __version__
 from ..utils.color_utils import colour_str
 
 try:
@@ -259,6 +260,9 @@ def main() -> None:
             "etc.) in parallel."
         )
     )
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"%(prog)s {__version__}"
+    )
     # fmt: off
     parser.add_argument(
         "root_dir", nargs="?", default=".",
@@ -289,7 +293,7 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output."
+        "--verbose", action="store_true", help="Enable verbose output."
     )
 
     parser.add_argument(

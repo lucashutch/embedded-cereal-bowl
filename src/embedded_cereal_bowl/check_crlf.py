@@ -5,6 +5,8 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from . import __version__
+
 try:
     MAX_WIDTH = min(shutil.get_terminal_size()[0], 80)
 except (ValueError, OSError):
@@ -103,6 +105,10 @@ def main() -> None:
     """Main entry point for CRLF checker."""
     parser = argparse.ArgumentParser(
         description="Checks for CRLF line endings in files within a repository.",
+    )
+
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
     )
 
     # fmt: off

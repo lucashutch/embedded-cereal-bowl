@@ -13,6 +13,7 @@ from typing import Any
 import regex as re
 import serial
 
+from .. import __version__
 from ..utils.color_utils import colour_str
 
 ASNI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
@@ -25,6 +26,9 @@ def parse_arguments() -> argparse.Namespace:
             "logging, and auto-reconnect."
         ),
         formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
         "-p",
