@@ -28,7 +28,8 @@ def main_formatter() -> None:
     return formatter_main()
 
 
-if __name__ == "__main__":
+def main_cli() -> None:
+    """Main entry point for the CLI tool dispatcher."""
     # Allow running this module directly for testing
     if len(sys.argv) > 1:
         tool = sys.argv[1]
@@ -56,3 +57,7 @@ if __name__ == "__main__":
             "[monitor|timestamp|check-crlf|format-code] [args]"
         )
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main_cli()
