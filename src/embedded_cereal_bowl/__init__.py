@@ -6,7 +6,14 @@ This package provides tools for serial monitoring, code formatting, time convers
 and line ending checking, designed to simplify common embedded development tasks.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("embedded-cereal-bowl")
+except PackageNotFoundError:
+    # Package is not installed
+    __version__ = "0.0.0.dev0+unknown"
+
 __author__ = "Lucas Hutch"
 
 from . import formatter, monitor, timestamp, utils
