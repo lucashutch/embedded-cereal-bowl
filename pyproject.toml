@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=64.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "embedded-cereal-bowl"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A collection of lightweight Python utilities for embedded development"
 readme = "README.md"
 license = {text = "MIT"}
@@ -56,6 +56,8 @@ where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.setuptools_scm]
 
 [tool.ruff]
 line-length = 88

@@ -6,6 +6,8 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from . import __version__
+
 
 def cleanup_logs(log_path: Path) -> None:
     """
@@ -54,6 +56,10 @@ def main() -> None:
         description=(
             "Archive a specified log directory with a timestamp and then delete it."
         )
+    )
+
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"%(prog)s {__version__}"
     )
 
     parser.add_argument(
