@@ -68,10 +68,9 @@ def parse_arguments() -> argparse.Namespace:
         "-t",
         "--print_time",
         type=str,
-        default="off",
-        choices=["off", "epoch", "ms", "dt"],
+        default=None,
+        choices=["epoch", "ms", "dt"],
         help="Print system time on each log line:\n"
-        "  off   - No timestamp\n"
         "  epoch - Unix timestamp with ms (e.g., 1672531200.123)\n"
         "  ms    - Milliseconds since epoch\n"
         "  dt    - Human-readable datetime (e.g., 2023-01-01 10:00:00.123)",
@@ -141,7 +140,9 @@ def run_serial_printing_with_logs(
         )
 
 
-def add_time_to_line(print_time: str) -> str:
+def add_time_to_line(print_time: str | None) -> str:
+    if not print_time:
+        return ""
     now_utc = datetime.now(UTC)
     if "epoch" in print_time:
         return f"{now_utc.timestamp():.3f} "
@@ -188,7 +189,7 @@ def create_replacement_lambda(
 
 
 def send_serial_data(
-    ser: serial.Serial, data: str, print_time: str, file: Any | None
+    ser: serial.Serial, data: str, print_time: str | None, file: Any | None
 ) -> bool:
     """Send data to serial port and log it if logging is enabled."""
     try:
@@ -246,7 +247,6 @@ def serial_loop(
 ) -> None:
     # Create stop event for thread management
     stop_event = threading.Event()
-    print_time = print_time or "none"
     input_thread = None
 
     # Start input thread if sending is enabled
@@ -314,18 +314,21 @@ def run_serial_printing(
     enable_send: bool = False,
 ) -> None:
     count = 0
-    while True:
-        try:
-            time.sleep(0.2)
-            with serial.Serial(serial_port_name, baud, timeout=0.05) as ser:
-                count = 0
-                print("\n" + f" ✅ Connected to {serial_port_name} ".center(50, "-"))
-                serial_loop(ser, print_time, file, highlight_words, enable_send)
-        except serial.SerialException:
-            count = wait_with_spinner(serial_port_name, count)
-        except KeyboardInterrupt:
-            print(colour_str(f"\nClosed {serial_port_name}.").dim().green())
-            sys.exit(0)
+    try:
+        while True:
+            try:
+                time.sleep(0.2)
+                with serial.Serial(serial_port_name, baud, timeout=0.05) as ser:
+                    count = 0
+                    print(
+                        "\n" + f" ✅ Connected to {serial_port_name} ".center(50, "-")
+                    )
+                    serial_loop(ser, print_time, file, highlight_words, enable_send)
+            except serial.SerialException:
+                count = wait_with_spinner(serial_port_name, count)
+    except KeyboardInterrupt:
+        print(colour_str(f"\nClosed {serial_port_name}.").dim().green())
+        sys.exit(0)
 
 
 def main() -> None:

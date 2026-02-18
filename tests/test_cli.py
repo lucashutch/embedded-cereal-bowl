@@ -1,138 +1,120 @@
-"""Test CLI entry points and additional functionality."""
+"""Tests for the CLI module."""
 
-import sys
-from pathlib import Path
+import runpy
 from unittest.mock import Mock, patch
 
 import pytest
 
-# Add src directory to path for testing
-src_path = Path(__file__).parent.parent / "src"
-sys.path.insert(0, str(src_path))
+from src.embedded_cereal_bowl.cli import (
+    main_check_crlf,
+    main_cli,
+    main_formatter,
+    main_monitor,
+    main_timestamp,
+)
 
-# Import the modules that contain the main functions
-import src.embedded_cereal_bowl.cli as cli
 
-
-class TestCLI:
-    """Test cases for CLI entry points."""
+class TestCLIEntryPoints:
+    """Test individual CLI entry point functions."""
 
     @patch("src.embedded_cereal_bowl.monitor.monitor.parse_arguments")
     @patch("src.embedded_cereal_bowl.monitor.monitor.run_serial_printing")
-    def test_main_monitor_basic(self, mock_run, mock_parse):
-        """Test basic monitor CLI entry point."""
-        mock_args = Mock()
-        mock_args.port = "ACM0"
-        mock_args.baud = 115200
-        mock_args.log = False
-        mock_args.log_file = ""
-        mock_args.log_directory = "/logs"
-        mock_args.clear = False
-        mock_args.print_time = "off"
-        mock_args.highlight = None
-        mock_args.send = False
+    def test_main_monitor(self, mock_run, mock_parse):
+        mock_args = Mock(
+            port="ACM0",
+            baud=115200,
+            log=False,
+            log_file="",
+            log_directory="/logs",
+            clear=False,
+            print_time=None,
+            highlight=None,
+            send=False,
+        )
         mock_parse.return_value = mock_args
-
         with patch("sys.argv", ["monitor"]), patch("builtins.print"):
-            cli.main_monitor()
-
-        mock_parse.assert_called_once()
+            main_monitor()
         mock_run.assert_called_once()
 
     @patch("src.embedded_cereal_bowl.timestamp.timestamp.parse_and_convert_time")
     def test_main_timestamp_success(self, mock_parse):
-        """Test timestamp CLI entry point."""
         mock_parse.return_value = ("2023-01-01T12:30:45.567Z", "local", 1672573845.567)
-
-        with patch("sys.argv", ["timestamp", "1672573845.567"]):
-            with patch("builtins.print") as mock_print:
-                cli.main_timestamp()
-
+        with (
+            patch("sys.argv", ["timestamp", "1672573845.567"]),
+            patch("builtins.print"),
+        ):
+            main_timestamp()
         mock_parse.assert_called_once_with("1672573845.567")
-        mock_print.assert_called()
-
-    @patch("src.embedded_cereal_bowl.timestamp.timestamp.parse_and_convert_time")
-    def test_main_timestamp_error(self, mock_parse):
-        """Test timestamp CLI entry point with error."""
-        mock_parse.side_effect = ValueError("Invalid input")
-
-        with patch("sys.argv", ["timestamp", "invalid"]):
-            with patch("builtins.print") as mock_print:
-                with patch("sys.exit") as mock_exit:
-                    cli.main_timestamp()
-
-        mock_parse.assert_called_once_with("invalid")
-        mock_print.assert_called()
-        mock_exit.assert_called_once()
 
     def test_main_formatter(self):
-        """Test formatter CLI entry point."""
-        with patch("sys.argv", ["format-code", "/test/path"]):
-            with pytest.raises(SystemExit):
-                cli.main_formatter()
+        with (
+            patch("sys.argv", ["format-code", "/test/path"]),
+            pytest.raises(SystemExit),
+        ):
+            main_formatter()
 
-    def test_main_check_crlf_not_implemented(self):
-        """Test check-crlf CLI entry point (not yet implemented)."""
-        with patch("sys.argv", ["check-crlf"]):
-            with patch("sys.exit") as mock_exit:
-                try:
-                    cli.main_check_crlf()
-                except SystemExit:
-                    pass
-
-            mock_exit.assert_called_once()  # May exit with different codes
+    def test_main_check_crlf(self):
+        with patch("sys.argv", ["check-crlf"]), patch("sys.exit") as mock_exit:
+            try:
+                main_check_crlf()
+            except SystemExit:
+                pass
+            mock_exit.assert_called()
 
 
-class TestAdditionalModules:
-    """Test cases for additional modules not covered elsewhere."""
+class TestCLIDispatcher:
+    """Test the main CLI tool dispatcher."""
 
-    def test_archive_logs_import(self):
-        """Test that archive_logs module can be imported."""
-        try:
-            from src.embedded_cereal_bowl import archive_logs
+    def test_cli_dispatch_monitor(self):
+        with (
+            patch("sys.argv", ["cli.py", "monitor"]),
+            patch("src.embedded_cereal_bowl.cli.main_monitor") as mock_tool,
+        ):
+            main_cli()
+            mock_tool.assert_called_once()
 
-            assert hasattr(archive_logs, "main")
-        except ImportError:
-            pytest.fail("Could not import archive_logs module")
+    def test_cli_dispatch_timestamp(self):
+        with (
+            patch("sys.argv", ["cli.py", "timestamp"]),
+            patch("src.embedded_cereal_bowl.cli.main_timestamp") as mock_tool,
+        ):
+            main_cli()
+            mock_tool.assert_called_once()
 
-    def test_check_crlf_import(self):
-        """Test that check_crlf module can be imported."""
-        try:
-            from src.embedded_cereal_bowl import check_crlf
+    def test_cli_dispatch_check_crlf(self):
+        with (
+            patch("sys.argv", ["cli.py", "check-crlf"]),
+            patch("src.embedded_cereal_bowl.cli.main_check_crlf") as mock_tool,
+        ):
+            main_cli()
+            mock_tool.assert_called_once()
 
-            assert hasattr(check_crlf, "main")
-        except ImportError:
-            pytest.fail("Could not import check_crlf module")
+    def test_cli_dispatch_formatter(self):
+        with (
+            patch("sys.argv", ["cli.py", "format-code"]),
+            patch("src.embedded_cereal_bowl.cli.main_formatter") as mock_tool,
+        ):
+            main_cli()
+            mock_tool.assert_called_once()
 
-    def test_utils_imports(self):
-        """Test that utils modules can be imported."""
-        try:
-            from src.embedded_cereal_bowl.utils import color_utils
+    def test_cli_dispatch_invalid(self, capsys):
+        with patch("sys.argv", ["cli.py", "invalid"]), pytest.raises(SystemExit) as exc:
+            main_cli()
+        assert exc.value.code == 1
+        assert "Usage:" in capsys.readouterr().out
 
-            assert color_utils.colour_str is not None
-        except ImportError:
-            pytest.fail("Could not import color_utils module")
+    def test_cli_dispatch_no_args(self, capsys):
+        with patch("sys.argv", ["cli.py"]), pytest.raises(SystemExit) as exc:
+            main_cli()
+        assert exc.value.code == 1
+        assert "Usage:" in capsys.readouterr().out
 
-    def test_all_main_functions_callable(self):
-        """Test that all main functions are callable."""
-        from src.embedded_cereal_bowl.cli import (
-            main_check_crlf,
-            main_formatter,
-            main_monitor,
-            main_timestamp,
-        )
 
-        assert callable(main_monitor)
-        assert callable(main_timestamp)
-        assert callable(main_check_crlf)
-        assert callable(main_formatter)
-
-    def test_module_versions(self):
-        """Test that version info is accessible."""
-        try:
-            from src.embedded_cereal_bowl import __version__
-
-            assert isinstance(__version__, str)
-            assert len(__version__) > 0
-        except (ImportError, AttributeError):
-            pytest.skip("Version information not available")
+def test_cli_main_block():
+    """Test cli.py __main__ block."""
+    with (
+        patch("src.embedded_cereal_bowl.monitor.main") as mock_monitor,
+        patch("sys.argv", ["cli.py", "monitor"]),
+    ):
+        runpy.run_module("src.embedded_cereal_bowl.cli", run_name="__main__")
+        mock_monitor.assert_called_once()

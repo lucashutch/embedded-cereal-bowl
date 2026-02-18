@@ -36,8 +36,11 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.10",
+    "pytest-sugar",
     "ruff>=0.1.0",
     "build>=0.8.0",
+    "clang-format>=17.0.6",
+    "cmakelang>=0.6.13",
 ]
 
 [project.scripts]
@@ -116,5 +119,8 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
-    "--cov-fail-under=40",
+    "--cov-fail-under=95",
+]
+filterwarnings = [
+    "ignore:.*found in sys.modules after import of package:RuntimeWarning",
 ]
