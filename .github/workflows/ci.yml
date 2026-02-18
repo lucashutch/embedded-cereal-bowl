@@ -41,6 +41,7 @@ jobs:
         uv sync --all-extras --dev
 
     - name: Test with pytest
+      timeout-minutes: 2
       run: |
         uv run pytest --ignore=tests/integration/ --cov=src --cov-report=xml --cov-report=term-missing --cov-report=html
 
