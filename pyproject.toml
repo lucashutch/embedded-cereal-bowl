@@ -92,7 +92,6 @@ ignore = [
     "SIM108",  # Use ternary operator (keep readable)
     "B006",  # Mutable default argument (acceptable here)
     "SIM117",  # Combine with statements (keep readable)
-    "RUF059",  # Unpacked variable not used (test convenience)
     "E402",  # Module level import (test setup)
     "F841",  # Local variable assigned but never used (test convenience)
     "E712",  # Avoid equality comparisons to True (keep explicit)

@@ -21,7 +21,7 @@ jobs:
 
   test:
     needs: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     strategy:
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
