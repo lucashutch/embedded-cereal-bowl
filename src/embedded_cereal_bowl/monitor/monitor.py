@@ -8,7 +8,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Protocol, TextIO
 
 import regex as re
 import serial
@@ -17,6 +17,12 @@ from .. import __version__
 from ..utils.color_utils import colour_str
 
 ASNI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class ReplacementMatch(Protocol):
+    def start(self) -> int: ...
+
+    def group(self) -> str: ...
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -158,8 +164,8 @@ def add_time_to_line(print_time: str | None) -> str:
 
 def create_replacement_lambda(
     current_line_state: str,
-) -> Callable[[re.Match[str]], str]:
-    def find_and_replace(match: re.Match[str]) -> str:
+) -> Callable[[ReplacementMatch], str]:
+    def find_and_replace(match: ReplacementMatch) -> str:
         # Part of the line before the current match
         pre_match_str = current_line_state[: match.start()]
         # Find all ANSI codes before the match
@@ -189,7 +195,7 @@ def create_replacement_lambda(
 
 
 def send_serial_data(
-    ser: serial.Serial, data: str, print_time: str | None, file: Any | None
+    ser: serial.Serial, data: str, print_time: str | None, file: TextIO | None
 ) -> bool:
     """Send data to serial port and log it if logging is enabled."""
     try:
@@ -215,8 +221,8 @@ def send_serial_data(
 
 def handle_user_input(
     ser: serial.Serial,
-    print_time: str,
-    file: Any | None,
+    print_time: str | None,
+    file: TextIO | None,
     stop_event: threading.Event,
 ) -> None:
     """Handle user keyboard input for sending serial data."""
@@ -241,7 +247,7 @@ def handle_user_input(
 def serial_loop(
     ser: serial.Serial,
     print_time: str | None,
-    file: Any | None,
+    file: TextIO | None,
     highlight_words: list[str] | None = None,
     enable_send: bool = False,
 ) -> None:
@@ -309,7 +315,7 @@ def run_serial_printing(
     serial_port_name: str,
     baud: int,
     print_time: str | None = None,
-    file: Any | None = None,
+    file: TextIO | None = None,
     highlight_words: list[str] | None = None,
     enable_send: bool = False,
 ) -> None:

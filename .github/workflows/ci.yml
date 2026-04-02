@@ -19,8 +19,19 @@ jobs:
           ruff check src tests
           ruff format --check src tests
 
+  type-check:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/ty:alpine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Type check with ty
+        run: |
+          ty check --output-format github
+
   test:
-    needs: lint
+    needs: [lint, type-check]
     runs-on: ubuntu-latest
     strategy:
       matrix:

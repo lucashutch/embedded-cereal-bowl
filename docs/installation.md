@@ -91,7 +91,7 @@ pip install .
 | **pytest-mock** | >=3.10 | Test mocking | `pip install pytest-mock` |
 | **pytest-cov** | >=4.0 | Coverage | `pip install pytest-cov` |
 | **ruff** | >=0.1.0 | Linting/formatting | `pip install ruff` |
-| **mypy** | >=1.0 | Type checking | `pip install mypy` |
+| **ty** | >=0.0.27 | Type checking | `pip install ty` |
 | **bandit** | >=1.7 | Security scanning | `pip install bandit` |
 | **build** | >=0.8.0 | Package building | `pip install build` |
 
@@ -161,13 +161,13 @@ monitor --help
 ### Development Environment Test
 ```bash
 # Run test suite
-pytest --cov=src
+uv run pytest --cov=src
 
 # Run linting
-ruff check src
+uv run ruff check src tests
 
 # Run type checking
-mypy src
+uv run ty check
 
 # Run security check
 bandit -r src
@@ -303,7 +303,7 @@ pip install --upgrade pyserial regex colorama
 pip uninstall embedded-cereal-bowl
 
 # Remove development dependencies
-pip uninstall pytest ruff mypy bandit
+pip uninstall pytest ruff ty bandit
 ```
 
 ### Clean Installation
