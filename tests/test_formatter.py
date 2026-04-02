@@ -68,6 +68,44 @@ class TestFormatterDiscovery:
         with pytest.raises(SystemExit):
             find_all_files(Path("/nonexistent"), [], False)
 
+    def test_find_all_files_ignore_extensions(self, tmp_path, capsys):
+        (tmp_path / "test.cpp").write_text("code")
+        (tmp_path / "ignore.log").write_text("log content")
+        (tmp_path / "ignore.txt").write_text("text content")
+
+        result = find_all_files(tmp_path, [], verbose=False, ignore_extensions=["log"])
+        assert len(result) == 1
+        assert "test.cpp" in str(result.keys())
+
+    def test_find_all_files_ignore_extensions_with_dot(self, tmp_path, capsys):
+        (tmp_path / "test.cpp").write_text("code")
+        (tmp_path / "ignore.log").write_text("log content")
+
+        result = find_all_files(tmp_path, [], verbose=False, ignore_extensions=[".log"])
+        assert len(result) == 1
+        assert "test.cpp" in str(result.keys())
+
+    def test_find_all_files_ignore_extensions_verbose(self, tmp_path, capsys):
+        (tmp_path / "test.cpp").write_text("code")
+        (tmp_path / "ignore.log").write_text("log content")
+
+        result = find_all_files(
+            tmp_path, [], verbose=True, ignore_extensions=["log", "txt"]
+        )
+        assert len(result) == 1
+        captured = capsys.readouterr()
+        assert "Ignored Extensions" in captured.out
+        assert "log" in captured.out
+        assert "txt" in captured.out
+
+    def test_find_all_files_ignore_extensions_case_insensitive(self, tmp_path):
+        (tmp_path / "test.cpp").write_text("code")
+        (tmp_path / "ignore.LOG").write_text("log content")
+
+        result = find_all_files(tmp_path, [], verbose=False, ignore_extensions=["log"])
+        assert len(result) == 1
+        assert "test.cpp" in str(result.keys())
+
 
 class TestFileProcessing:
     """Test processing individual files and parallel execution."""
@@ -205,6 +243,22 @@ class TestFormatterCLI:
             patch("sys.argv", ["formatter", "src"]),
         ):
             main()
+
+    def test_main_with_ignore_ext(self):
+        with (
+            patch(
+                "src.embedded_cereal_bowl.formatter.formatter.check_for_tools",
+                return_value=True,
+            ),
+            patch(
+                "src.embedded_cereal_bowl.formatter.formatter.run_project_tasks"
+            ) as mock_run,
+            patch("sys.argv", ["formatter", "src", "--ignore-ext", "log", "txt"]),
+        ):
+            main()
+            mock_run.assert_called_once()
+            _, kwargs = mock_run.call_args
+            assert kwargs["ignore_extensions"] == ["log", "txt"]
 
     def test_main_no_tools(self):
         with (

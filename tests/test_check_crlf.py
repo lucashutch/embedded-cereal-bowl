@@ -62,6 +62,22 @@ def test_main_with_args():
             assert kwargs["verbose"] is True
 
 
+def test_main_with_ignore_ext():
+    """Test main function with --ignore-ext argument."""
+    with patch(
+        "sys.argv", ["check_crlf", "/some/path", "--ignore-ext", "log", "txt", "-v"]
+    ):
+        with patch(
+            "src.embedded_cereal_bowl.check_crlf.check_crlf_in_root"
+        ) as mock_check:
+            main()
+            mock_check.assert_called_once()
+            _, kwargs = mock_check.call_args
+            assert kwargs["repo_path"] == Path("/some/path").resolve()
+            assert kwargs["ignore_extensions"] == ["log", "txt"]
+            assert kwargs["verbose"] is True
+
+
 def test_scan_directory_symlink(tmp_path):
     """Test scan_directory skips symlinks."""
     target = tmp_path / "target.txt"
@@ -166,6 +182,63 @@ def test_check_crlf_in_root_found(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Found files with CRLF line endings" in captured.out
     assert "dirty.txt" in captured.out
+
+
+def test_check_crlf_ignore_extensions(tmp_path, capsys):
+    f1 = tmp_path / "crlf.txt"
+    f1.write_bytes(b"unix\r\n")
+    f2 = tmp_path / "crlf.log"
+    f2.write_bytes(b"windows\r\n")
+
+    with pytest.raises(SystemExit) as excinfo:
+        check_crlf_in_root(tmp_path, [], ignore_extensions=["log"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "crlf.txt" in captured.out
+    assert "crlf.log" not in captured.out
+
+
+def test_check_crlf_ignore_extensions_with_dot(tmp_path, capsys):
+    f1 = tmp_path / "crlf.txt"
+    f1.write_bytes(b"unix\r\n")
+    f2 = tmp_path / "crlf.log"
+    f2.write_bytes(b"windows\r\n")
+
+    with pytest.raises(SystemExit) as excinfo:
+        check_crlf_in_root(tmp_path, [], ignore_extensions=[".log"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "crlf.txt" in captured.out
+    assert "crlf.log" not in captured.out
+
+
+def test_check_crlf_ignore_extensions_verbose(tmp_path, capsys):
+    f1 = tmp_path / "crlf.txt"
+    f1.write_bytes(b"unix\r\n")
+    f2 = tmp_path / "crlf.log"
+    f2.write_bytes(b"windows\r\n")
+
+    with pytest.raises(SystemExit) as excinfo:
+        check_crlf_in_root(tmp_path, [], verbose=True, ignore_extensions=["log", "tmp"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "Ignored Extensions" in captured.out
+    assert "log" in captured.out
+    assert "tmp" in captured.out
+
+
+def test_check_crlf_ignore_extensions_case_insensitive(tmp_path, capsys):
+    f1 = tmp_path / "crlf.txt"
+    f1.write_bytes(b"unix\r\n")
+    f2 = tmp_path / "crlf.LOG"
+    f2.write_bytes(b"windows\r\n")
+
+    with pytest.raises(SystemExit) as excinfo:
+        check_crlf_in_root(tmp_path, [], ignore_extensions=["log"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "crlf.txt" in captured.out
+    assert "crlf.LOG" not in captured.out
 
 
 def test_main_keyboard_interrupt():
