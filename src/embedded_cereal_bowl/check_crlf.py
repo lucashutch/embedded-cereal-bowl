@@ -67,7 +67,10 @@ def resolve_ignore_dirs(root: Path, ignore_patterns: list[str]) -> set[Path]:
 
 
 def check_crlf_in_root(
-    repo_path: Path, ignore_patterns: list[str], verbose: bool = False
+    repo_path: Path,
+    ignore_patterns: list[str],
+    verbose: bool = False,
+    ignore_extensions: list[str] = [],
 ) -> None:
     if not repo_path.is_dir():
         print(f"Error: Directory not found at '{repo_path}'")
@@ -83,10 +86,18 @@ def check_crlf_in_root(
         for d in sorted(ignored_dirs):
             print(f"   🚫 {d}")
 
+    ignored_exts = {ext.lstrip(".").lower() for ext in ignore_extensions}
+    if verbose and ignored_exts:
+        print(" Ignored Extensions ".center(MAX_WIDTH, "-"))
+        for ext in sorted(ignored_exts):
+            print(f"   🚫 *.{ext}")
+
     crlf_files_found = []
 
     # Use the custom scanner
     for file_path in scan_directory(repo_path, ignored_dirs):
+        if file_path.suffix.lstrip(".").lower() in ignored_exts:
+            continue
         if has_crlf_endings(file_path):
             # Calculate relative path for cleaner output using pathlib
             crlf_files_found.append(file_path.relative_to(repo_path))
@@ -128,6 +139,17 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--ignore-ext",
+        "-e",
+        nargs="+",
+        metavar="EXT",
+        default=[],
+        help=(
+            "One or more file extensions to ignore.\n"
+            "(e.g., --ignore-ext log .log txt)"
+        ),
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
     )
     args = parser.parse_args()
@@ -138,6 +160,7 @@ def main() -> None:
             repo_path=Path(args.root_dir).resolve(),
             ignore_patterns=args.ignore,
             verbose=args.verbose,
+            ignore_extensions=args.ignore_ext,
         )
     except KeyboardInterrupt:
         print("Operation cancelled by user.")
