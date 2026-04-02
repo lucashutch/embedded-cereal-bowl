@@ -70,7 +70,10 @@ def scan_directory(
 
 
 def find_all_files(
-    root_dir: Path, ignore_patterns: list[str], verbose: bool
+    root_dir: Path,
+    ignore_patterns: list[str],
+    verbose: bool,
+    ignore_extensions: list[str] = [],
 ) -> dict[Path, dict[str, Any]]:
     """Finds all files for all configured formatters, respecting ignore globs."""
 
@@ -90,6 +93,12 @@ def find_all_files(
         for d in sorted(absolute_ignore_dirs):
             print(f"  🚫 {d}")
 
+    ignored_exts = {ext.lstrip(".").lower() for ext in ignore_extensions}
+    if verbose and ignored_exts:
+        print(" Ignored Extensions ".center(MAX_WIDTH, "-"))
+        for ext in sorted(ignored_exts):
+            print(f"  🚫 *.{ext}")
+
     name_lookup = {
         name: config
         for config in FORMATTER_CONFIG.values()
@@ -102,6 +111,8 @@ def find_all_files(
     }
 
     for file_path in scan_directory(root_dir, absolute_ignore_dirs):
+        if file_path.suffix.lstrip(".").lower() in ignored_exts:
+            continue
         config = name_lookup.get(file_path.name)
         if not config:
             config = extension_lookup.get(file_path.suffix)
@@ -234,9 +245,12 @@ def run_project_tasks(
     jobs: int | None = None,
     check: bool = False,
     verbose: bool = False,
+    ignore_extensions: list[str] = [],
 ) -> None:
     print(f"🚀 Scanning for all source files in: {root_dir}")
-    files_to_process = find_all_files(root_dir, ignore_patterns, verbose)
+    files_to_process = find_all_files(
+        root_dir, ignore_patterns, verbose, ignore_extensions
+    )
     process_files_parallel(files_to_process, root_dir, jobs, verbose, check)
 
 
@@ -305,6 +319,18 @@ def main() -> None:
             "changes and the associated required changes"
         ),
     )
+
+    parser.add_argument(
+        "--ignore-ext",
+        "-e",
+        nargs="+",
+        metavar="EXT",
+        default=[],
+        help=(
+            "One or more file extensions to ignore.\n"
+            "(e.g., --ignore-ext log .log txt)"
+        ),
+    )
     args = parser.parse_args()
     # fmt: on
 
@@ -317,6 +343,7 @@ def main() -> None:
             jobs=args.jobs,
             check=args.check,
             verbose=args.verbose,
+            ignore_extensions=args.ignore_ext,
         )
     except KeyboardInterrupt:
         print("Operation cancelled by user.")
@@ -328,6 +355,7 @@ def format_files(
     ignore_patterns: list[str] | None = None,
     jobs: int | None = None,
     verbose: bool = False,
+    ignore_extensions: list[str] | None = None,
 ) -> None:
     """Format files in a directory (for programmatic use)."""
     if not check_for_tools():
@@ -338,6 +366,7 @@ def format_files(
         jobs=jobs,
         check=False,
         verbose=verbose,
+        ignore_extensions=ignore_extensions or [],
     )
 
 
@@ -346,6 +375,7 @@ def check_format(
     ignore_patterns: list[str] | None = None,
     jobs: int | None = None,
     verbose: bool = False,
+    ignore_extensions: list[str] | None = None,
 ) -> None:
     """Check file formatting in a directory (for programmatic use)."""
     if not check_for_tools():
@@ -356,6 +386,7 @@ def check_format(
         jobs=jobs,
         check=True,
         verbose=verbose,
+        ignore_extensions=ignore_extensions or [],
     )
 
 
