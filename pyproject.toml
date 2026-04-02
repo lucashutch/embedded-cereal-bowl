@@ -38,6 +38,7 @@ dev = [
     "pytest-mock>=3.10",
     "pytest-sugar",
     "ruff>=0.1.0",
+    "ty>=0.0.27",
     "build>=0.8.0",
     "clang-format>=17.0.6",
     "cmakelang>=0.6.13",
@@ -108,6 +109,27 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[tool.ty.environment]
+python-version = "3.12"
+root = ["./src", "."]
+
+[tool.ty.rules]
+all = "error"
+
+[tool.ty.src]
+include = ["src", "tests"]
+exclude = [
+    "build",
+    "htmlcov",
+    "src/embedded_cereal_bowl.egg-info",
+]
+
+[[tool.ty.overrides]]
+include = ["tests/**", "**/test_*.py"]
+
+[tool.ty.overrides.rules]
+all = "warn"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

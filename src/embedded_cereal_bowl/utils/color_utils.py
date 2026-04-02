@@ -16,9 +16,9 @@ class colour_str:
         prefix = "".join(self.codes)
         return f"{prefix}{self.s}{Style.RESET_ALL}"
 
-    def _add_style(self, style_code: str) -> "colour_str":
+    def _add_style(self, style_code: object) -> "colour_str":
         """Adds a style code and returns self to allow chaining."""
-        self.codes.append(style_code)
+        self.codes.append(str(style_code))
         return self
 
     def red(self) -> "colour_str":
