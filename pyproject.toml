@@ -7,10 +7,8 @@ name = "embedded-cereal-bowl"
 dynamic = ["version"]
 description = "A collection of lightweight Python utilities for embedded development"
 readme = "README.md"
-license = {text = "MIT"}
-authors = [
-    {name = "Lucas Hutch", email = "lucas@example.com"}
-]
+license = { text = "MIT" }
+authors = [{ name = "Lucas Hutch", email = "lucas@example.com" }]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -25,11 +23,7 @@ classifiers = [
     "Topic :: Software Development :: Code Generators",
 ]
 requires-python = ">=3.12"
-dependencies = [
-    "pyserial>=3.5",
-    "regex>=2022.0.0",
-    "colorama>=0.4.4",
-]
+dependencies = ["pyserial>=3.5", "regex>=2022.0.0", "colorama>=0.4.4"]
 
 [project.optional-dependencies]
 dev = [
@@ -40,7 +34,7 @@ dev = [
     "ruff>=0.1.0",
     "ty>=0.0.27",
     "build>=0.8.0",
-    "clang-format>=17.0.6",
+    "clang-format>=19.1.7",
     "cmakelang>=0.6.13",
 ]
 
@@ -71,7 +65,8 @@ fix = true
 [tool.ruff.lint]
 select = [
     # pycodestyle
-    "E", "W",
+    "E",
+    "W",
     # pyflakes
     "F",
     # pyupgrade
@@ -87,23 +82,22 @@ select = [
 ]
 
 ignore = [
-    "E501",  # Line too long (handled by formatter)
-    "SIM103",  # Return condition directly (keep readable)
-    "SIM105",  # Use contextlib.suppress (keep explicit try/except)
-    "SIM108",  # Use ternary operator (keep readable)
-    "B006",  # Mutable default argument (acceptable here)
-    "SIM117",  # Combine with statements (keep readable)
-    "RUF059",  # Unpacked variable not used (test convenience)
-    "E402",  # Module level import (test setup)
-    "F841",  # Local variable assigned but never used (test convenience)
-    "E712",  # Avoid equality comparisons to True (keep explicit)
-    "F821",  # Undefined name (existing code patterns)
-    "F811",  # Redefinition (existing test patterns)
+    "E501",   # Line too long (handled by formatter)
+    "SIM103", # Return condition directly (keep readable)
+    "SIM105", # Use contextlib.suppress (keep explicit try/except)
+    "SIM108", # Use ternary operator (keep readable)
+    "B006",   # Mutable default argument (acceptable here)
+    "SIM117", # Combine with statements (keep readable)
+    "RUF059", # Unpacked variable not used (test convenience)
+    "E402",   # Module level import (test setup)
+    "F841",   # Local variable assigned but never used (test convenience)
+    "E712",   # Avoid equality comparisons to True (keep explicit)
+    "F821",   # Undefined name (existing code patterns)
+    "F811",   # Redefinition (existing test patterns)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = [
-]
+"tests/*" = []
 
 [tool.ruff.format]
 quote-style = "double"
@@ -119,11 +113,7 @@ all = "error"
 
 [tool.ty.src]
 include = ["src", "tests"]
-exclude = [
-    "build",
-    "htmlcov",
-    "src/embedded_cereal_bowl.egg-info",
-]
+exclude = ["build", "htmlcov", "src/embedded_cereal_bowl.egg-info"]
 
 [[tool.ty.overrides]]
 include = ["tests/**", "**/test_*.py"]
