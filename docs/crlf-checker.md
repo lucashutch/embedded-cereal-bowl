@@ -41,15 +41,22 @@ check-crlf --verbose
 ## 🔧 Command Reference
 
 ```bash
-usage: check_crlf.py [-h] [--ignore DIR [DIR ...]] [-v] [root_dir]
+usage: check_crlf.py [-h] [--ignore DIR [DIR ...]] [-v] [--no-git-walk] [root_dir]
 ```
 
 ### Options
 | Option | Short | Long | Description | Example |
-|---|---|---|---|
-| Ignore | `--ignore` | Skip directories | `--ignore build third-party` |
+|---|---|---|---|---|
+| Ignore | `-i` | `--ignore` | Skip directories | `--ignore build third-party` |
 | Verbose | `-v` | `--verbose` | Detailed output | `--verbose` |
+| Manual Walk |  | `--no-git-walk` | Scan the filesystem instead of `git ls-files` | `--no-git-walk` |
 | Help | `-h` | `--help` | Show help | `-h` |
+
+## File Discovery
+
+`check-crlf` uses `git ls-files` by default, so it checks git-tracked files only and ignores untracked files. If Git is unavailable or the root is not in a Git repository, it falls back to the legacy recursive filesystem walk. Use `--no-git-walk` to force that manual walk and include untracked files.
+
+`--ignore` applies in both modes. In Git mode, tracked files returned by `git ls-files` are skipped if they are under an ignored directory; in manual mode, ignored directories are pruned while walking.
 
 ## 📊 Output Examples
 

@@ -69,13 +69,56 @@ def scan_directory(
         print(f"⚠️  Permission denied: {root_path}", file=sys.stderr)
 
 
+def is_excluded(file_path: Path, excluded_paths: set[Path]) -> bool:
+    """Return whether file_path is inside an excluded directory."""
+    try:
+        resolved = file_path.resolve()
+    except OSError:
+        return False
+    return any(
+        excluded == resolved or excluded in resolved.parents
+        for excluded in excluded_paths
+    )
+
+
+def git_ls_files(root_dir: Path, verbose: bool) -> list[Path] | None:
+    """Return git-tracked files rooted at root_dir, or None when git fails."""
+    try:
+        result = subprocess.run(  # nosec B603, B607
+            ["git", "-C", str(root_dir), "ls-files", "-z", "--"],
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        if verbose:
+            print(
+                f"⚠️  git ls-files failed; falling back to manual walk: {exc}",
+                file=sys.stderr,
+            )
+        return None
+
+    paths = []
+    for raw_path in result.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        file_path = root_dir / raw_path.decode("utf-8", "surrogateescape")
+        if file_path.is_file() and not file_path.is_symlink():
+            paths.append(file_path)
+    return paths
+
+
 def find_all_files(
     root_dir: Path,
     ignore_patterns: list[str],
     verbose: bool,
-    ignore_extensions: list[str] = [],
+    ignore_extensions: list[str] | None = None,
+    use_git_walk: bool = True,
 ) -> dict[Path, dict[str, Any]]:
     """Finds all files for all configured formatters, respecting ignore globs."""
+
+    if isinstance(ignore_extensions, bool):
+        use_git_walk = ignore_extensions
+        ignore_extensions = None
 
     files_with_config: dict[Path, dict[str, Any]] = {}
 
@@ -93,7 +136,7 @@ def find_all_files(
         for d in sorted(absolute_ignore_dirs):
             print(f"  🚫 {d}")
 
-    ignored_exts = {ext.lstrip(".").lower() for ext in ignore_extensions}
+    ignored_exts = {ext.lstrip(".").lower() for ext in (ignore_extensions or [])}
     if verbose and ignored_exts:
         print(" Ignored Extensions ".center(MAX_WIDTH, "-"))
         for ext in sorted(ignored_exts):
@@ -110,7 +153,13 @@ def find_all_files(
         for ext in config.get("file_extensions", [])
     }
 
-    for file_path in scan_directory(root_dir, absolute_ignore_dirs):
+    discovered_files = git_ls_files(root_dir, verbose) if use_git_walk else None
+    if discovered_files is None:
+        discovered_files = list(scan_directory(root_dir, absolute_ignore_dirs))
+
+    for file_path in discovered_files:
+        if is_excluded(file_path, absolute_ignore_dirs):
+            continue
         if file_path.suffix.lstrip(".").lower() in ignored_exts:
             continue
         config = name_lookup.get(file_path.name)
@@ -245,11 +294,16 @@ def run_project_tasks(
     jobs: int | None = None,
     check: bool = False,
     verbose: bool = False,
-    ignore_extensions: list[str] = [],
+    ignore_extensions: list[str] | None = None,
+    use_git_walk: bool = True,
 ) -> None:
+    if isinstance(ignore_extensions, bool):
+        use_git_walk = ignore_extensions
+        ignore_extensions = None
+
     print(f"🚀 Scanning for all source files in: {root_dir}")
     files_to_process = find_all_files(
-        root_dir, ignore_patterns, verbose, ignore_extensions
+        root_dir, ignore_patterns, verbose, ignore_extensions, use_git_walk
     )
     process_files_parallel(files_to_process, root_dir, jobs, verbose, check)
 
@@ -331,6 +385,12 @@ def main() -> None:
             "(e.g., --ignore-ext log .log txt)"
         ),
     )
+
+    parser.add_argument(
+        "--no-git-walk",
+        action="store_true",
+        help="Use the legacy manual filesystem walk instead of git ls-files.",
+    )
     args = parser.parse_args()
     # fmt: on
 
@@ -344,6 +404,7 @@ def main() -> None:
             check=args.check,
             verbose=args.verbose,
             ignore_extensions=args.ignore_ext,
+            use_git_walk=not args.no_git_walk,
         )
     except KeyboardInterrupt:
         print("Operation cancelled by user.")
@@ -356,8 +417,13 @@ def format_files(
     jobs: int | None = None,
     verbose: bool = False,
     ignore_extensions: list[str] | None = None,
+    use_git_walk: bool = True,
 ) -> None:
     """Format files in a directory (for programmatic use)."""
+    if isinstance(ignore_extensions, bool):
+        use_git_walk = ignore_extensions
+        ignore_extensions = None
+
     if not check_for_tools():
         return
     run_project_tasks(
@@ -367,6 +433,7 @@ def format_files(
         check=False,
         verbose=verbose,
         ignore_extensions=ignore_extensions or [],
+        use_git_walk=use_git_walk,
     )
 
 
@@ -376,8 +443,13 @@ def check_format(
     jobs: int | None = None,
     verbose: bool = False,
     ignore_extensions: list[str] | None = None,
+    use_git_walk: bool = True,
 ) -> None:
     """Check file formatting in a directory (for programmatic use)."""
+    if isinstance(ignore_extensions, bool):
+        use_git_walk = ignore_extensions
+        ignore_extensions = None
+
     if not check_for_tools():
         return
     run_project_tasks(
@@ -387,6 +459,7 @@ def check_format(
         check=True,
         verbose=verbose,
         ignore_extensions=ignore_extensions or [],
+        use_git_walk=use_git_walk,
     )
 
 

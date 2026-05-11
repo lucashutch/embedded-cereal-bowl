@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import runpy
+import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -12,6 +13,7 @@ from src.embedded_cereal_bowl.formatter.formatter import (
     check_format,
     find_all_files,
     format_files,
+    git_ls_files,
     main,
     process_files_parallel,
     process_one_file,
@@ -105,6 +107,85 @@ class TestFormatterDiscovery:
         result = find_all_files(tmp_path, [], verbose=False, ignore_extensions=["log"])
         assert len(result) == 1
         assert "test.cpp" in str(result.keys())
+
+    def test_git_ls_files_success(self, tmp_path):
+        tracked = tmp_path / "tracked.cpp"
+        tracked.write_text("code")
+        untracked = tmp_path / "untracked.cpp"
+        untracked.write_text("code")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(stdout=b"tracked.cpp\0")
+
+            assert git_ls_files(tmp_path, verbose=False) == [tracked]
+
+        mock_run.assert_called_once_with(
+            ["git", "-C", str(tmp_path), "ls-files", "-z", "--"],
+            check=True,
+            capture_output=True,
+        )
+
+    def test_find_all_files_git_default_excludes_untracked(self, tmp_path):
+        tracked = tmp_path / "tracked.cpp"
+        tracked.write_text("code")
+        untracked = tmp_path / "untracked.cpp"
+        untracked.write_text("code")
+
+        with patch(
+            "src.embedded_cereal_bowl.formatter.formatter.git_ls_files",
+            return_value=[tracked],
+        ):
+            result = find_all_files(tmp_path, [], verbose=False)
+
+        assert set(result) == {tracked}
+        assert untracked not in result
+
+    def test_find_all_files_git_failure_fallback(self, tmp_path, capsys):
+        tracked = tmp_path / "tracked.cpp"
+        tracked.write_text("code")
+
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, [])):
+            result = find_all_files(tmp_path, [], verbose=True)
+
+        assert set(result) == {tracked}
+        assert "falling back to manual walk" in capsys.readouterr().err
+
+    def test_find_all_files_non_git_fallback(self, tmp_path):
+        tracked = tmp_path / "tracked.cpp"
+        tracked.write_text("code")
+
+        with patch(
+            "subprocess.run", side_effect=subprocess.CalledProcessError(128, [])
+        ):
+            result = find_all_files(tmp_path, [], verbose=False)
+
+        assert set(result) == {tracked}
+
+    def test_find_all_files_no_git_walk_manual_mode(self, tmp_path):
+        tracked = tmp_path / "tracked.cpp"
+        tracked.write_text("code")
+
+        with patch(
+            "src.embedded_cereal_bowl.formatter.formatter.git_ls_files"
+        ) as mock_git:
+            result = find_all_files(tmp_path, [], verbose=False, use_git_walk=False)
+
+        mock_git.assert_not_called()
+        assert set(result) == {tracked}
+
+    def test_find_all_files_git_honors_ignore(self, tmp_path):
+        ignored = tmp_path / "ignored"
+        ignored.mkdir()
+        tracked = ignored / "tracked.cpp"
+        tracked.write_text("code")
+
+        with patch(
+            "src.embedded_cereal_bowl.formatter.formatter.git_ls_files",
+            return_value=[tracked],
+        ):
+            result = find_all_files(tmp_path, ["ignored"], verbose=False)
+
+        assert result == {}
 
 
 class TestFileProcessing:
@@ -260,6 +341,20 @@ class TestFormatterCLI:
             _, kwargs = mock_run.call_args
             assert kwargs["ignore_extensions"] == ["log", "txt"]
 
+    def test_main_no_git_walk(self):
+        with (
+            patch(
+                "src.embedded_cereal_bowl.formatter.formatter.check_for_tools",
+                return_value=True,
+            ),
+            patch(
+                "src.embedded_cereal_bowl.formatter.formatter.run_project_tasks"
+            ) as mock_run,
+            patch("sys.argv", ["formatter", "--no-git-walk", "src"]),
+        ):
+            main()
+        assert mock_run.call_args.kwargs["use_git_walk"] is False
+
     def test_main_no_tools(self):
         with (
             patch(
@@ -301,6 +396,7 @@ class TestFormatterCLI:
             format_files("src")
             check_format("src")
             assert mock_run.call_count == 2
+            assert mock_run.call_args.kwargs["use_git_walk"] is True
 
     def test_programmatic_no_tools(self):
         with patch(

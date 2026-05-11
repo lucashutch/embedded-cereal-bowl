@@ -44,7 +44,7 @@ cmake-format --version
 ## 🔧 Full Command Reference
 
 ```bash
-usage: formatter.py [-h] [-i DIR [DIR ...]] [-j JOBS] [-v] [--check] [root_dir]
+usage: formatter.py [-h] [-i DIR [DIR ...]] [-j JOBS] [-v] [--check] [--no-git-walk] [root_dir]
 ```
 
 ### Options Details
@@ -55,6 +55,7 @@ usage: formatter.py [-h] [-i DIR [DIR ...]] [-j JOBS] [-v] [--check] [root_dir]
 | Jobs | `-j` | `--jobs` | Parallel jobs | `--jobs 4` |
 | Verbose | `-v` | `--verbose` | Detailed output | `--verbose` |
 | Check Only | `--check` | `-c` | Check without changes | `--check` |
+| Manual Walk |  | `--no-git-walk` | Scan the filesystem instead of `git ls-files` | `--no-git-walk` |
 | Help | `-h` | `--help` | Show help | `-h` |
 
 ## 🎯 Usage Patterns
@@ -116,9 +117,11 @@ project/
 
 ### Smart File Discovery
 The formatter:
-- Scans recursively from root directory
+- Uses `git ls-files` by default, so only git-tracked files are considered
+- Falls back to a recursive filesystem scan when Git is unavailable or the root is not in a Git repository
+- Supports `--no-git-walk` to force the legacy recursive filesystem scan, including untracked files
 - Matches files by extension only
-- Respects ignore patterns
+- Respects `--ignore` patterns in both modes; in Git mode, tracked files under ignored directories are skipped after `git ls-files` returns them
 - Processes files in parallel
 
 ## 📊 Output Examples
