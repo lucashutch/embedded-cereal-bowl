@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import shutil
+import subprocess  # nosec B404
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -66,15 +67,55 @@ def resolve_ignore_dirs(root: Path, ignore_patterns: list[str]) -> set[Path]:
     return resolved_ignores
 
 
+def is_excluded(file_path: Path, excluded_paths: set[Path]) -> bool:
+    """Return whether file_path is inside an excluded directory."""
+    try:
+        resolved = file_path.resolve()
+    except OSError:
+        return False
+    return any(
+        excluded == resolved or excluded in resolved.parents
+        for excluded in excluded_paths
+    )
+
+
+def git_ls_files(root_dir: Path, verbose: bool) -> list[Path] | None:
+    """Return git-tracked files rooted at root_dir, or None when git fails."""
+    try:
+        result = subprocess.run(  # nosec B603, B607
+            ["git", "-C", str(root_dir), "ls-files", "-z", "--"],
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        if verbose:
+            print(f"⚠️  git ls-files failed; falling back to manual walk: {exc}")
+        return None
+
+    paths = []
+    for raw_path in result.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        file_path = root_dir / raw_path.decode("utf-8", "surrogateescape")
+        if file_path.is_file() and not file_path.is_symlink():
+            paths.append(file_path)
+    return paths
+
+
 def check_crlf_in_root(
     repo_path: Path,
     ignore_patterns: list[str],
     verbose: bool = False,
-    ignore_extensions: list[str] = [],
+    ignore_extensions: list[str] | None = None,
+    use_git_walk: bool = True,
 ) -> None:
     if not repo_path.is_dir():
         print(f"Error: Directory not found at '{repo_path}'")
         sys.exit(1)
+
+    if isinstance(ignore_extensions, bool):
+        use_git_walk = ignore_extensions
+        ignore_extensions = None
 
     print(f"🔍 Checking for CRLF line endings in: {repo_path}")
 
@@ -86,7 +127,7 @@ def check_crlf_in_root(
         for d in sorted(ignored_dirs):
             print(f"   🚫 {d}")
 
-    ignored_exts = {ext.lstrip(".").lower() for ext in ignore_extensions}
+    ignored_exts = {ext.lstrip(".").lower() for ext in (ignore_extensions or [])}
     if verbose and ignored_exts:
         print(" Ignored Extensions ".center(MAX_WIDTH, "-"))
         for ext in sorted(ignored_exts):
@@ -94,8 +135,13 @@ def check_crlf_in_root(
 
     crlf_files_found = []
 
-    # Use the custom scanner
-    for file_path in scan_directory(repo_path, ignored_dirs):
+    discovered_files = git_ls_files(repo_path, verbose) if use_git_walk else None
+    if discovered_files is None:
+        discovered_files = list(scan_directory(repo_path, ignored_dirs))
+
+    for file_path in discovered_files:
+        if is_excluded(file_path, ignored_dirs):
+            continue
         if file_path.suffix.lstrip(".").lower() in ignored_exts:
             continue
         if has_crlf_endings(file_path):
@@ -152,6 +198,11 @@ def main() -> None:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
     )
+    parser.add_argument(
+        "--no-git-walk",
+        action="store_true",
+        help="Use the legacy manual filesystem walk instead of git ls-files.",
+    )
     args = parser.parse_args()
     # fmt: on
 
@@ -161,6 +212,7 @@ def main() -> None:
             ignore_patterns=args.ignore,
             verbose=args.verbose,
             ignore_extensions=args.ignore_ext,
+            use_git_walk=not args.no_git_walk,
         )
     except KeyboardInterrupt:
         print("Operation cancelled by user.")

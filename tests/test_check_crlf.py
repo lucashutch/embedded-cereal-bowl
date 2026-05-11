@@ -1,12 +1,14 @@
 """Tests for CRLF checker utility."""
 
+import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from src.embedded_cereal_bowl.check_crlf import (
     check_crlf_in_root,
+    git_ls_files,
     has_crlf_endings,
     main,
     resolve_ignore_dirs,
@@ -60,6 +62,17 @@ def test_main_with_args():
             assert kwargs["repo_path"] == Path("/some/path").resolve()
             assert kwargs["ignore_patterns"] == ["build"]
             assert kwargs["verbose"] is True
+            assert kwargs["use_git_walk"] is True
+
+
+def test_main_no_git_walk():
+    """Test --no-git-walk passes manual discovery mode."""
+    with patch("sys.argv", ["check_crlf", "--no-git-walk", "/some/path"]):
+        with patch(
+            "src.embedded_cereal_bowl.check_crlf.check_crlf_in_root"
+        ) as mock_check:
+            main()
+            assert mock_check.call_args.kwargs["use_git_walk"] is False
 
 
 def test_main_with_ignore_ext():
@@ -170,6 +183,100 @@ def test_check_crlf_in_root_clean(tmp_path, capsys):
     assert excinfo.value.code == 0
     captured = capsys.readouterr()
     assert "No files with CRLF line endings were found" in captured.out
+
+
+def test_git_ls_files_success(tmp_path):
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("content")
+    untracked = tmp_path / "untracked.txt"
+    untracked.write_text("content")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = Mock(stdout=b"tracked.txt\0")
+
+        assert git_ls_files(tmp_path, verbose=False) == [tracked]
+
+    mock_run.assert_called_once_with(
+        ["git", "-C", str(tmp_path), "ls-files", "-z", "--"],
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_check_crlf_in_root_git_default_excludes_untracked(tmp_path, capsys):
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_bytes(b"unix\n")
+    untracked = tmp_path / "untracked.txt"
+    untracked.write_bytes(b"windows\r\n")
+
+    with (
+        patch(
+            "src.embedded_cereal_bowl.check_crlf.git_ls_files", return_value=[tracked]
+        ),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        check_crlf_in_root(tmp_path, [])
+
+    assert excinfo.value.code == 0
+    assert "untracked.txt" not in capsys.readouterr().out
+
+
+def test_check_crlf_in_root_git_failure_fallback(tmp_path, capsys):
+    dirty = tmp_path / "dirty.txt"
+    dirty.write_bytes(b"windows\r\n")
+
+    with (
+        patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, [])),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        check_crlf_in_root(tmp_path, [], verbose=True)
+
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "falling back to manual walk" in captured.out
+    assert "dirty.txt" in captured.out
+
+
+def test_check_crlf_in_root_non_git_fallback(tmp_path):
+    clean = tmp_path / "clean.txt"
+    clean.write_bytes(b"unix\n")
+
+    with (
+        patch("subprocess.run", side_effect=subprocess.CalledProcessError(128, [])),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        check_crlf_in_root(tmp_path, [], verbose=False)
+
+    assert excinfo.value.code == 0
+
+
+def test_check_crlf_in_root_no_git_walk_manual_mode(tmp_path):
+    dirty = tmp_path / "dirty.txt"
+    dirty.write_bytes(b"windows\r\n")
+
+    with (
+        patch("src.embedded_cereal_bowl.check_crlf.git_ls_files") as mock_git,
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        check_crlf_in_root(tmp_path, [], use_git_walk=False)
+
+    mock_git.assert_not_called()
+    assert excinfo.value.code == 1
+
+
+def test_check_crlf_in_root_git_honors_ignore(tmp_path):
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    dirty = ignored / "dirty.txt"
+    dirty.write_bytes(b"windows\r\n")
+
+    with (
+        patch("src.embedded_cereal_bowl.check_crlf.git_ls_files", return_value=[dirty]),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        check_crlf_in_root(tmp_path, ["ignored"])
+
+    assert excinfo.value.code == 0
 
 
 def test_check_crlf_in_root_found(tmp_path, capsys):
